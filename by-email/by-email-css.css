@@ -241,6 +241,11 @@ ul#invite-anyone-clear-links {
 
 ul#invite-anyone-clear-links li {
   float:left;
+/**  XTEC ************ AFEGIT - hide li bullet
+	2015.11.26 @nacho
+**/
+  list-style:none;
+/** ************ FI*/
 }
 
 ul#invite-anyone-clear-links li a {
