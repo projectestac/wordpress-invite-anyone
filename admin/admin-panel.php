@@ -230,9 +230,41 @@ function invite_anyone_admin_panel() {
 	<h2 class="nav-tab-wrapper">
 		<a class="nav-tab <?php echo 'general-settings' === $subpage ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( 'subpage', 'general-settings', $url_base ) ); ?>"><?php esc_html_e( 'General Settings', 'invite-anyone' ); ?></a>
 		<a class="nav-tab <?php echo 'access-control' === $subpage ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( 'subpage', 'access-control', $url_base ) ); ?>"><?php esc_html_e( 'Access Control', 'invite-anyone' ); ?></a>
+		<!--
+		// ************ AFEGIT - Hide Cloudsponge tab from admin panel to all users other than xtecadmin
+		// 2016.11.25 @xaviernietosanchez
+		-->
+		<?php if(is_xtecadmin()) { ?>
+		<!--
+		// ************ FI
+		-->
 		<a class="nav-tab <?php echo 'cloudsponge' === $subpage ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( 'subpage', 'cloudsponge', $url_base ) ); ?>"><?php esc_html_e( 'Contact Picker', 'invite-anyone' ); ?></a>
+		<!--
+		// ************ AFEGIT - Hide Cloudsponge tab from admin panel to all users other than xtecadmin
+		// 2016.11.25 @xaviernietosanchez
+		-->
+		<?php } ?>
+		<!--
+		// ************ FI
+		-->
 		<a class="nav-tab <?php echo 'manage-invitations' === $subpage ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( 'subpage', 'manage-invitations', $url_base ) ); ?>"><?php esc_html_e( 'Manage Invitations', 'invite-anyone' ); ?></a>
+		<!--
+		// ************ AFEGIT - Hide Stadistic tab from admin panel to all users other than xtecadmin
+		// 2016.11.25 @xaviernietosanchez
+		-->
+		<?php if(is_xtecadmin()) { ?>
+		<!--
+		// ************ FI
+		-->
 		<a class="nav-tab <?php echo 'stats' === $subpage ? 'nav-tab-active' : ''; ?>" href="<?php echo esc_url( add_query_arg( 'subpage', 'stats', $url_base ) ); ?>"><?php esc_html_e( 'Stats', 'invite-anyone' ); ?></a>
+		<!--
+		// ************ AFEGIT - Hide Stadistic tab from admin panel to all users other than xtecadmin
+		// 2016.11.25 @xaviernietosanchez
+		-->
+		<?php } ?>
+		<!--
+		// ************ FI
+		-->
 	</h2>
 
 		<form action="<?php echo esc_attr( $form_action ); ?>" method="post">
@@ -270,6 +302,12 @@ function invite_anyone_settings_setup() {
 			break;
 
 		case 'cloudsponge' :
+			// XTEC ************ AFEGIT - Blocked access to Clousponge page to all users other than xtecadmin
+			// 2016.11.25 @xaviernietosanchez
+			if (!is_xtecadmin()) {
+				wp_die( __( 'You do not have permission to do that.' ) );
+			}
+			// ************ FI
 			/* Cloudsponge Settings */
 			add_settings_section( 'invite_anyone_cs', __( 'Contact Picker', 'invite-anyone' ), 'invite_anyone_settings_cs_content', 'invite_anyone' );
 
@@ -282,6 +320,12 @@ function invite_anyone_settings_setup() {
 			break;
 
 		case 'stats' :
+			// XTEC ************ AFEGIT - Blocked access to Stadistic page to all users other than xtecadmin
+			// 2016.11.25 @xaviernietosanchez
+			if (!is_xtecadmin()) {
+				wp_die( __( 'You do not have permission to do that.' ) );
+			}
+			// ************ FI
 			/* Stats */
 			add_settings_section( 'invite_anyone_stats', __( 'Stats', 'invite-anyone' ), 'invite_anyone_settings_stats_content', 'invite_anyone' );
 
