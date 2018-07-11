@@ -266,7 +266,8 @@ function invite_anyone_activate_user( $user_id, $key, $user ) {
 				);
 
 				groups_invite_user( $args );
-				groups_send_invites( $inviter_id, $group_id );
+				// groups_send_invites( $inviter_id, $group_id );
+				groups_join_group( $group_id, $user_id );
 			}
 		}
 	}
@@ -1471,4 +1472,3 @@ function invite_anyone_already_accepted_redirect( $redirect ) {
 	return $redirect;
 }
 add_filter( 'bp_loggedin_register_page_redirect_to', 'invite_anyone_already_accepted_redirect' );
-
