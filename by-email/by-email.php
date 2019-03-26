@@ -109,7 +109,7 @@ function invite_anyone_opt_out_screen() {
 			<?php if ( isset( $_GET['email'] ) && $email = $_GET['email'] ) : ?>
 				<script type="text/javascript">
 				jQuery(document).ready( function() {
-					jQuery("input#opt_out_email").val("<?php echo str_replace( ' ', '+', urldecode( $email ) ) ?>");
+					jQuery("input#opt_out_email").val("<?php echo esc_js( str_replace( ' ', '+', urldecode( $email ) ) ) ?>");
 				});
 				</script>
 			<?php endif; ?>
@@ -167,7 +167,7 @@ function invite_anyone_register_screen_message() {
 
 		<script type="text/javascript">
 		jQuery(document).ready( function() {
-			jQuery("input#signup_email").val("<?php echo str_replace( ' ', '+', $email ) ?>");
+			jQuery("input#signup_email").val("<?php echo esc_js( str_replace( ' ', '+', $email ) ) ?>");
 		});
 
 		</script>
@@ -316,82 +316,97 @@ function invite_anyone_setup_nav() {
 }
 add_action( 'bp_setup_nav', 'invite_anyone_setup_nav' );
 
+/**
+ * Determine if current user can access invitation functions
+ */
 function invite_anyone_access_test() {
 	global $current_user, $bp;
 
-	if ( !is_user_logged_in() )
-		return false;
-
-	// The site admin can see all
-	if ( current_user_can( 'bp_moderate' ) ) {
-		return true;
-	}
-
-	if ( bp_displayed_user_id() && !bp_is_my_profile() )
-		return false;
-
+	$access_allowed = true;
 	$iaoptions = invite_anyone_options();
 
-	/* This is the last of the general checks: logged in, looking at own profile, and finally admin has set to "All Users".*/
-	if ( isset( $iaoptions['email_visibility_toggle'] ) && $iaoptions['email_visibility_toggle'] == 'no_limit' )
-		return true;
-
-	/* Minimum number of days since joined the site */
-	if ( isset( $iaoptions['email_since_toggle'] ) && $iaoptions['email_since_toggle'] == 'yes' ) {
-		if ( isset( $iaoptions['days_since'] ) && $since = $iaoptions['days_since'] ) {
-			$since = $since * 86400;
-
-			$date_registered = strtotime($current_user->data->user_registered);
-			$time = time();
-
-			if ( $time - $date_registered < $since )
-				return false;
-		}
+	if ( ! is_user_logged_in() ) {
+		$access_allowed = false;
 	}
 
-	/* Minimum role on this blog. Users who are at the necessary role or higher should move right through this toward the 'return true' at the end of the function. */
-	if ( isset( $iaoptions['email_role_toggle'] ) && $iaoptions['email_role_toggle'] == 'yes' ) {
-		if ( isset( $iaoptions['minimum_role'] ) && $role = $iaoptions['minimum_role'] ) {
-			switch ( $role ) {
-				case 'Subscriber' :
-					if ( !current_user_can( 'read' ) )
-						return false;
-					break;
+	// The site admin can see all
+	elseif ( current_user_can( 'bp_moderate' ) ) {
+		$access_allowed = true;
+	}
 
-				case 'Contributor' :
-					if ( !current_user_can( 'edit_posts' ) )
-						return false;
-					break;
+	elseif ( bp_displayed_user_id() && ! bp_is_my_profile() ) {
+		$access_allowed = false;
+	}
 
-				case 'Author' :
-					if ( !current_user_can( 'publish_posts' ) )
-						return false;
-					break;
+	/* This is the last of the general checks: logged in, looking at own profile, and finally admin has set to "All Users".*/
+	elseif ( isset( $iaoptions['email_visibility_toggle'] ) && 'no_limit' === $iaoptions['email_visibility_toggle'] ) {
+		$access_allowed = true;
+	}
 
-				case 'Editor' :
-					if ( !current_user_can( 'delete_others_pages' ) )
-						return false;
-					break;
+	/* Minimum number of days since joined the site */
+	elseif ( isset( $iaoptions['email_since_toggle'] ) && 'yes' === $iaoptions['email_since_toggle'] ) {
+		if ( isset( $iaoptions['days_since'] ) && $since = $iaoptions['days_since'] ) {
+			// WordPress's DAY_IN_SECONDS exists for WP >= 3.5, target version is 3.2, hence hard-coded value of 86400.
+			$since = $since * 86400;
 
-				case 'Administrator' :
-					if ( !current_user_can( 'switch_themes' ) )
-						return false;
-					break;
+			$date_registered = strtotime( $current_user->data->user_registered );
+			$time = time();
+
+			if ( $time - $date_registered < $since ) {
+				$access_allowed = false;
 			}
 		}
 	}
 
+	/* Minimum role on this blog. Users who are at the necessary role or higher should move right through this toward the 'return true' at the end of the function. */
+	elseif ( isset( $iaoptions['email_role_toggle'] ) && 'yes' === $iaoptions['email_role_toggle'] ) {
+		if ( isset( $iaoptions['minimum_role'] ) && $role = $iaoptions['minimum_role'] ) {
+			switch ( $role ) {
+				case 'Subscriber' :
+					if ( ! current_user_can( 'read' ) ) {
+						$access_allowed = false;
+					}
+					break;
+
+				case 'Contributor' :
+					if ( ! current_user_can( 'edit_posts' ) ) {
+						$access_allowed = false;
+					}
+					break;
+
+				case 'Author' :
+					if ( ! current_user_can( 'publish_posts' ) ) {
+						$access_allowed = false;
+					}
+					break;
+
+				case 'Editor' :
+					if ( ! current_user_can( 'delete_others_pages' ) ) {
+						$access_allowed = false;
+					}
+					break;
+
+				case 'Administrator' :
+					if ( ! current_user_can( 'switch_themes' ) ) {
+						$access_allowed = false;
+					}
+					break;
+			}//end switch
+		}//end if
+	}
+
 	/* User blacklist */
-	if ( isset( $iaoptions['email_blacklist_toggle'] ) && $iaoptions['email_blacklist_toggle'] == 'yes' ) {
+	elseif ( isset( $iaoptions['email_blacklist_toggle'] ) && 'yes' === $iaoptions['email_blacklist_toggle'] ) {
 		if ( isset( $iaoptions['email_blacklist'] ) ) {
-			$blacklist = explode( ",", $iaoptions['email_blacklist'] );
-			$user_id = $current_user->ID;
-			if ( in_array( $user_id, $blacklist ) )
-				return false;
+			$blacklist = wp_parse_id_list( $iaoptions['email_blacklist'] );
+			$user_id = intval( $current_user->ID );
+			if ( in_array( $user_id, $blacklist, true ) ) {
+				$access_allowed = false;
+			}
 		}
 	}
 
-	return true;
+	return apply_filters( 'invite_anyone_access_test', $access_allowed );
 
 }
 add_action( 'wp_head', 'invite_anyone_access_test' );
@@ -403,6 +418,10 @@ add_action( 'wp_head', 'invite_anyone_access_test' );
  */
 function invite_anyone_catch_send() {
 	global $bp;
+
+	if ( ! is_user_logged_in() || ! bp_is_my_profile() ) {
+		return;
+	}
 
 	if ( ! bp_is_current_component( $bp->invite_anyone->slug ) ) {
 		return;
@@ -416,19 +435,27 @@ function invite_anyone_catch_send() {
 		return;
 	}
 
+	if ( ! invite_anyone_access_test() ) {
+		return;
+	}
+
+	if ( ! isset( $_POST['ia-send-by-email-nonce'] ) || ! wp_verify_nonce( wp_unslash( $_POST['ia-send-by-email-nonce'] ), 'invite_anyone_send_by_email' ) ) {
+		return;
+	}
+
 	if ( ! invite_anyone_process_invitations( stripslashes_deep( $_POST ) ) ) {
 		bp_core_add_message( __( 'Sorry, there was a problem sending your invitations. Please try again.', 'invite-anyone' ), 'error' );
 	}
 
 	bp_core_redirect( bp_displayed_user_domain() . $bp->invite_anyone->slug . '/sent-invites' );
 }
-add_action( 'wp', 'invite_anyone_catch_send' );
+add_action( 'bp_actions', 'invite_anyone_catch_send' );
 
 function invite_anyone_catch_clear() {
 	global $bp;
 
 	if ( isset( $_COOKIE['invite-anyone'] ) ) {
-		$returned_data = unserialize( stripslashes( $_COOKIE['invite-anyone'] ) );
+		$returned_data = json_decode( wp_unslash( $_COOKIE['invite-anyone'] ), true );
 
 		if ( $returned_data ) {
 			// We'll take a moment nice and early in the loading process to get returned_data
@@ -609,7 +636,7 @@ function invite_anyone_screen_one_content() {
 	}
 	?>
 
-	<p id="welcome-message"><?php echo $welcome_message ?></p>
+	<p id="welcome-message"><?php echo esc_html( $welcome_message ) ?></p>
 
 	<ol id="invite-anyone-steps">
 
@@ -623,7 +650,7 @@ function invite_anyone_screen_one_content() {
 			<div class="manual-email">
 				<p>
 					<?php _e( 'Enter email addresses below, one per line.', 'invite-anyone' ) ?>
-					<?php if( invite_anyone_allowed_domains() ) : ?> <?php _e( 'You can only invite people whose email addresses end in one of the following domains:', 'invite-anyone' ) ?> <?php echo invite_anyone_allowed_domains(); ?><?php endif; ?>
+					<?php if( invite_anyone_allowed_domains() ) : ?> <?php _e( 'You can only invite people whose email addresses end in one of the following domains:', 'invite-anyone' ) ?> <?php echo esc_html( invite_anyone_allowed_domains() ); ?><?php endif; ?>
 				</p>
 
 				<?php if ( false !== $max_no_invites = invite_anyone_max_invites() ) : ?>
@@ -640,11 +667,11 @@ function invite_anyone_screen_one_content() {
 		<li>
 			<?php if ( $iaoptions['subject_is_customizable'] == 'yes' ) : ?>
 				<label for="invite-anyone-custom-subject"><?php _e( '(optional) Customize the subject line of the invitation email.', 'invite-anyone' ) ?></label>
-					<textarea name="invite_anyone_custom_subject" id="invite-anyone-custom-subject" rows="15" cols="10" ><?php echo invite_anyone_invitation_subject( $returned_subject ) ?></textarea>
+					<textarea name="invite_anyone_custom_subject" id="invite-anyone-custom-subject" rows="15" cols="10" ><?php echo esc_textarea( invite_anyone_invitation_subject( $returned_subject ) ) ?></textarea>
 			<?php else : ?>
-				<strong><?php _e( 'Subject:', 'invite-anyone' ) ?></strong> <?php echo invite_anyone_invitation_subject( $returned_subject ) ?>
+				<strong><?php _e( 'Subject:', 'invite-anyone' ) ?></strong> <?php echo esc_html( invite_anyone_invitation_subject( $returned_subject ) ) ?>
 
-				<input type="hidden" id="invite-anyone-customised-subject" name="invite_anyone_custom_subject" value="<?php echo invite_anyone_invitation_subject() ?>" />
+				<input type="hidden" id="invite-anyone-customised-subject" name="invite_anyone_custom_subject" value="<?php echo esc_attr( invite_anyone_invitation_subject() ) ?>" />
 			<?php endif; ?>
 		</li>
 
@@ -652,12 +679,12 @@ function invite_anyone_screen_one_content() {
 			<?php if ( $iaoptions['message_is_customizable'] == 'yes' ) : ?>
 				<label for="invite-anyone-custom-message"><?php _e( '(optional) Customize the text of the invitation.', 'invite-anyone' ) ?></label>
 				<p class="description"><?php _e( 'The message will also contain a custom footer containing links to accept the invitation or opt out of further email invitations from this site.', 'invite-anyone' ) ?></p>
-					<textarea name="invite_anyone_custom_message" id="invite-anyone-custom-message" cols="40" rows="10"><?php echo invite_anyone_invitation_message( $returned_message ) ?></textarea>
+					<textarea name="invite_anyone_custom_message" id="invite-anyone-custom-message" cols="40" rows="10"><?php echo esc_textarea( invite_anyone_invitation_message( $returned_message ) ) ?></textarea>
 			<?php else : ?>
 				<label for="invite-anyone-custom-message"><?php _e( 'Message:', 'invite-anyone' ) ?></label>
-					<textarea name="invite_anyone_custom_message" id="invite-anyone-custom-message" disabled="disabled"><?php echo invite_anyone_invitation_message( $returned_message ) ?></textarea>
+					<textarea name="invite_anyone_custom_message" id="invite-anyone-custom-message" disabled="disabled"><?php echo esc_textarea( invite_anyone_invitation_message( $returned_message ) ) ?></textarea>
 
-				<input type="hidden" name="invite_anyone_custom_message" value="<?php echo invite_anyone_invitation_message() ?>" />
+				<input type="hidden" name="invite_anyone_custom_message" value="<?php echo esc_attr( invite_anyone_invitation_message() ) ?>" />
 			<?php endif; ?>
 
 		</li>
@@ -677,9 +704,9 @@ function invite_anyone_screen_one_content() {
 
 						?>
 						<li>
-						<input type="checkbox" name="invite_anyone_groups[]" id="invite_anyone_groups-<?php bp_group_id() ?>" value="<?php bp_group_id() ?>" <?php if ( $from_group == bp_get_group_id() || array_search( bp_get_group_id(), $returned_groups) ) : ?>checked<?php endif; ?> />
+						<input type="checkbox" name="invite_anyone_groups[]" id="invite_anyone_groups-<?php echo esc_attr( bp_get_group_id() ) ?>" value="<?php echo esc_attr( bp_get_group_id() ) ?>" <?php if ( $from_group == bp_get_group_id() || array_search( bp_get_group_id(), $returned_groups) ) : ?>checked<?php endif; ?> />
 
-						<label for="invite_anyone_groups-<?php bp_group_id() ?>" class="invite-anyone-group-name"><?php bp_group_avatar_mini() ?> <span><?php bp_group_name() ?></span></label>
+						<label for="invite_anyone_groups-<?php echo esc_attr( bp_get_group_id() ) ?>" class="invite-anyone-group-name"><?php bp_group_avatar_mini() ?> <span><?php bp_group_name() ?></span></label>
 
 						</li>
 					<?php endwhile; ?>
@@ -690,6 +717,7 @@ function invite_anyone_screen_one_content() {
 
 		<?php endif; ?>
 
+		<?php wp_nonce_field( 'invite_anyone_send_by_email', 'ia-send-by-email-nonce' ); ?>
 		<?php do_action( 'invite_anyone_addl_fields' ) ?>
 
 	</ol>
@@ -747,6 +775,10 @@ function invite_anyone_screen_two() {
 		else
 			$order = 'DESC';
 
+		if ( 'DESC' !== $order ) {
+			$order = 'ASC';
+		}
+
 		$base_url = $bp->displayed_user->domain . $bp->invite_anyone->slug . '/sent-invites/';
 
 		?>
@@ -777,10 +809,10 @@ function invite_anyone_screen_two() {
 				<thead>
 					<tr>
 					  <th scope="col" class="col-delete-invite"></th>
-					  <th scope="col" class="col-email<?php if ( $sort_by == 'email' ) : ?> sort-by-me<?php endif ?>"><a class="<?php echo $order ?>" title="Sort column order <?php echo $order ?>" href="<?php echo $base_url ?>?sort_by=email&amp;order=<?php if ( $sort_by == 'email' && $order == 'ASC' ) : ?>DESC<?php else : ?>ASC<?php endif; ?>"><?php _e( 'Invited email address', 'invite-anyone' ) ?></a></th>
+					  <th scope="col" class="col-email<?php if ( $sort_by == 'email' ) : ?> sort-by-me<?php endif ?>"><a class="<?php echo esc_attr( $order ) ?>" title="Sort column order <?php echo esc_attr( $order ) ?>" href="<?php echo esc_url( $base_url ) ?>?sort_by=email&amp;order=<?php if ( $sort_by == 'email' && $order == 'ASC' ) : ?>DESC<?php else : ?>ASC<?php endif; ?>"><?php _e( 'Invited email address', 'invite-anyone' ) ?></a></th>
 					  <th scope="col" class="col-group-invitations"><?php _e( 'Group invitations', 'invite-anyone' ) ?></th>
-					  <th scope="col" class="col-date-invited<?php if ( $sort_by == 'date_invited' ) : ?> sort-by-me<?php endif ?>"><a class="<?php echo $order ?>" title="Sort column order <?php echo $order ?>" href="<?php echo $base_url ?>?sort_by=date_invited&amp;order=<?php if ( $sort_by == 'date_invited' && $order == 'DESC' ) : ?>ASC<?php else : ?>DESC<?php endif; ?>"><?php _e( 'Sent', 'invite-anyone' ) ?></a></th>
-					  <th scope="col" class="col-date-joined<?php if ( $sort_by == 'date_joined' ) : ?> sort-by-me<?php endif ?>"><a class="<?php echo $order ?>" title="Sort column order <?php echo $order ?>" href="<?php echo $base_url ?>?sort_by=date_joined&amp;order=<?php if ( $order == 'DESC' ) : ?>ASC<?php else : ?>DESC<?php endif; ?>"><?php _e( 'Accepted', 'invite-anyone' ) ?></a></th>
+					  <th scope="col" class="col-date-invited<?php if ( $sort_by == 'date_invited' ) : ?> sort-by-me<?php endif ?>"><a class="<?php echo esc_attr( $order ) ?>" title="Sort column order <?php echo esc_attr( $order ) ?>" href="<?php echo esc_url( $base_url ) ?>?sort_by=date_invited&amp;order=<?php if ( $sort_by == 'date_invited' && $order == 'DESC' ) : ?>ASC<?php else : ?>DESC<?php endif; ?>"><?php _e( 'Sent', 'invite-anyone' ) ?></a></th>
+					  <th scope="col" class="col-date-joined<?php if ( $sort_by == 'date_joined' ) : ?> sort-by-me<?php endif ?>"><a class="<?php echo esc_attr( $order ) ?>" title="Sort column order <?php echo esc_attr( $order ) ?>" href="<?php echo esc_url( $base_url ) ?>?sort_by=date_joined&amp;order=<?php if ( $order == 'DESC' ) : ?>ASC<?php else : ?>DESC<?php endif; ?>"><?php _e( 'Accepted', 'invite-anyone' ) ?></a></th>
 					</tr>
 				</thead>
 
@@ -849,8 +881,8 @@ function invite_anyone_screen_two() {
 						<td class="col-delete-invite"><?php echo $clear_link ?></td>
 						<td class="col-email"><?php echo esc_html( $email ) ?></td>
 						<td class="col-group-invitations"><?php echo $group_names ?></td>
-						<td class="col-date-invited"><?php echo $date_invited ?></td>
-						<td class="date-joined col-date-joined"><span></span><?php echo $date_joined ?></td>
+						<td class="col-date-invited"><?php echo esc_html( $date_invited ) ?></td>
+						<td class="date-joined col-date-joined"><span></span><?php echo esc_html( $date_joined ) ?></td>
 					</tr>
 				<?php endwhile ?>
 			 </tbody>
@@ -921,7 +953,7 @@ function invite_anyone_invitation_message( $returned_message = false ) {
 	global $bp;
 
 	if ( !$returned_message ) {
-		$inviter_name = $bp->loggedin_user->userdata->display_name;
+		$inviter_name = bp_core_get_user_displayname( bp_loggedin_user_id() );
 		$blogname = get_bloginfo('name');
 
 		$iaoptions = invite_anyone_options();
@@ -962,25 +994,68 @@ function invite_anyone_process_footer( $email ) {
 	return stripslashes( $footer );
 }
 
+/**
+ * Get the invitation acceptance URL for a given email address.
+ *
+ * @since 1.4.0
+ *
+ * @param string $email Email address.
+ * @return string
+ */
+function invite_anyone_get_accept_url( $email ) {
+	$accept_link  = add_query_arg( array(
+		'iaaction' => 'accept-invitation',
+		'email'    => $email,
+	), bp_get_root_domain() . '/' . bp_get_signup_slug() . '/' );
+
+	/**
+	 * Filters the invitation acceptance URL for a given email address.
+	 *
+	 * @since 0.3.3
+	 * @since 1.4.0 Introduced `$email` parameter.
+	 *
+	 * @param string $accept_link Accept URL.
+	 * @param string $email       Email address.
+	 */
+	return apply_filters( 'invite_anyone_accept_url', $accept_link, $email );
+}
+
+/**
+ * Get the opt-out URL for a given email address.
+ *
+ * @since 1.4.0
+ *
+ * @param string $email Email address.
+ * @return string
+ */
+function invite_anyone_get_opt_out_url( $email ) {
+	$opt_out_link = add_query_arg( array(
+		'iaaction' => 'opt-out',
+		'email'    => $email,
+	), bp_get_root_domain() . '/' . bp_get_signup_slug() . '/' );
+
+	/**
+	 * Filters the opt-out acceptance URL for a given email address.
+	 *
+	 * @since 1.4.0
+	 *
+	 * @param string $opt_out_link Opt-out URL.
+	 * @param string $email        Email address.
+	 */
+	return apply_filters( 'invite_anyone_opt_out_url', $opt_out_link, $email );
+}
+
 function invite_anyone_wildcard_replace( $text, $email = false ) {
 	global $bp;
 
-	$inviter_name = $bp->loggedin_user->userdata->display_name;
+	$inviter_name = bp_core_get_user_displayname( bp_loggedin_user_id() );
 	$site_name    = get_bloginfo( 'name' );
 	$inviter_url  = bp_loggedin_user_domain();
 
 	$email = urlencode( $email );
 
-	$accept_link  = add_query_arg( array(
-		'iaaction' => 'accept-invitation',
-		'email'    => $email,
-	), bp_get_root_domain() . '/' . bp_get_signup_slug() . '/' );
-	$accept_link  = apply_filters( 'invite_anyone_accept_url', $accept_link );
-
-	$opt_out_link = add_query_arg( array(
-		'iaaction' => 'opt-out',
-		'email'    => $email,
-	), bp_get_root_domain() . '/' . bp_get_signup_slug() . '/' );
+	$accept_link  = invite_anyone_get_accept_url( $email );
+	$opt_out_link = invite_anyone_get_opt_out_url( $email );
 
 	$text = str_replace( '%%INVITERNAME%%', $inviter_name, $text );
 	$text = str_replace( '%%INVITERURL%%', $inviter_url, $text );
@@ -1104,6 +1179,8 @@ function invite_anyone_parse_addresses( $address_string ) {
 function invite_anyone_process_invitations( $data ) {
 	global $bp;
 
+	$options = invite_anyone_options();
+
 	$emails = false;
 	// Parse out the individual email addresses
 	if ( !empty( $data['invite_anyone_email_addresses'] ) ) {
@@ -1117,21 +1194,33 @@ function invite_anyone_process_invitations( $data ) {
 	$returned_data = array(
 		'error_message' => false,
 		'error_emails'  => array(),
-		'subject' 	=> $data['invite_anyone_custom_subject'],
-		'message' 	=> $data['invite_anyone_custom_message'],
 		'groups' 	=> isset( $data['invite_anyone_groups'] ) ? $data['invite_anyone_groups'] : ''
 	);
 
-	// Check against the max number of invites. Send back right away if there are too many
-	$options 	= invite_anyone_options();
-	$max_invites 	= !empty( $options['max_invites'] ) ? $options['max_invites'] : 5;
+	if ( 'yes' === $options['subject_is_customizable'] ) {
+		$data['invite_anyone_custom_subject'] = $data['invite_anyone_custom_subject'];
+	} else {
+		$data['invite_anyone_custom_subject'] = invite_anyone_invitation_subject();
+	}
+
+	if ( 'yes' === $options['message_is_customizable'] ) {
+		$data['invite_anyone_custom_message'] = $data['invite_anyone_custom_message'];
+	} else {
+		$data['invite_anyone_custom_message'] = invite_anyone_invitation_message();
+	}
+
+	$returned_data['subject'] = $data['invite_anyone_custom_subject'];
+	$returned_data['message'] = $data['invite_anyone_custom_message'];
+
+	// Check against the max number of invites. Send back right away if there are too many.
+	$max_invites = ! empty( $options['max_invites'] ) ? $options['max_invites'] : 5;
 
 	if ( count( $emails ) > $max_invites ) {
 
 		$returned_data['error_message']	= sprintf( __( 'You are only allowed to invite up to %s people at a time. Please remove some addresses and try again', 'invite-anyone' ), $max_invites );
 		$returned_data['error_emails'] 	= $emails;
 
-		setcookie( 'invite-anyone', serialize( $returned_data ), 0, '/' );
+		setcookie( 'invite-anyone', wp_json_encode( $returned_data ), 0, '/' );
 		$redirect = bp_loggedin_user_domain() . $bp->invite_anyone->slug . '/invite-new-members/';
 		bp_core_redirect( $redirect );
 		die();
@@ -1154,7 +1243,7 @@ function invite_anyone_process_invitations( $data ) {
 			$returned_data['error_message'] = sprintf( __( 'You are only allowed to invite %s more people. Please remove some addresses and try again', 'invite-anyone' ), $remaining_invites_count );
 			$returned_data['error_emails'] = $emails;
 
-			setcookie( 'invite-anyone', serialize( $returned_data ), 0, '/' );
+			setcookie( 'invite-anyone', wp_json_encode( $returned_data ), 0, '/' );
 			$redirect = bp_loggedin_user_domain() . $bp->invite_anyone->slug . '/invite-new-members/';
 			bp_core_redirect( $redirect );
 			die();
@@ -1211,25 +1300,83 @@ function invite_anyone_process_invitations( $data ) {
 		$groups = ! empty( $data['invite_anyone_groups'] ) ? $data['invite_anyone_groups'] : array();
 		$is_error = 0;
 
-		foreach( $emails as $email ) {
+		$do_bp_email = true === function_exists( 'bp_send_email' ) && true === ! apply_filters( 'bp_email_use_wp_mail', false );
+
+		foreach ( $emails as $email ) {
 			$subject = stripslashes( strip_tags( $data['invite_anyone_custom_subject'] ) );
 
-			$message = stripslashes( strip_tags( $data['invite_anyone_custom_message'] ) );
+			if ( $do_bp_email ) {
+				$custom_message = stripslashes( $data['invite_anyone_custom_message'] );
+				$accept_url     = invite_anyone_get_accept_url( $email );
+				$opt_out_url    = invite_anyone_get_opt_out_url( $email );
+			} else {
+				$custom_message = stripslashes( strip_tags( $data['invite_anyone_custom_message'] ) );
+			}
 
 			$footer = invite_anyone_process_footer( $email );
 			$footer = invite_anyone_wildcard_replace( $footer, $email );
 
-			$message .= '
+			$message = $custom_message . '
 
 ================
 ';
 			$message .= $footer;
 
-			$to = apply_filters( 'invite_anyone_invitee_email', $email );
-			$subject = apply_filters( 'invite_anyone_invitation_subject', $subject );
-			$message = apply_filters( 'invite_anyone_invitation_message', $message );
+			/**
+			 * Filters the email address of an outgoing email.
+			 *
+			 * @since 1.3.20 Added the $data parameter.
+			 *
+			 * @param string $email Email address.
+			 * @param array  $data  Data about the information.
+			 */
+			$to = apply_filters( 'invite_anyone_invitee_email', $email, $data );
 
-			wp_mail( $to, $subject, $message );
+			/**
+			 * Filters the subject line of an outgoing email.
+			 *
+			 * @since 1.3.20 Added the $email and $data parameters.
+			 *
+			 * @param string $subject The email subject.
+			 * @param array  $data    Data about the information.
+			 * @param string $email   Email address of the invited user.
+			 */
+			$subject = apply_filters( 'invite_anyone_invitation_subject', $subject, $data, $email );
+
+			/**
+			 * Filters the contents of an outgoing plaintext email.
+			 *
+			 * @since 1.3.20 Added the $email and $data parameters.
+			 *
+			 * @param string $message The email message.
+			 * @param array  $data    Data about the information.
+			 * @param string $email   Email address of the invited user.
+			 */
+			$message = apply_filters( 'invite_anyone_invitation_message', $message, $data, $email );
+
+			// BP 2.5+
+			if ( $do_bp_email ) {
+				$bp_email_args = array(
+					'tokens' => array(
+						'ia.subject'           => $subject,
+						'ia.content'           => $custom_message,
+						'ia.content_plaintext' => $message,
+						'ia.accept_url'        => $accept_url,
+						'ia.opt_out_url'       => $opt_out_url,
+						'recipient.name'       => $to,
+					),
+					'subject' => $subject,
+					'content' => $message,
+				);
+
+				add_filter( 'bp_email_get_salutation', 'invite_anyone_replace_bp_email_salutation', 10, 2 );
+				bp_send_email( 'invite-anyone-invitation', $to, $bp_email_args );
+
+				remove_filter( 'bp_email_get_salutation', 'invite_anyone_replace_bp_email_salutation', 10, 2 );
+
+			} else {
+				wp_mail( $to, $subject, $message );
+			}
 
 			/* todo: isolate which email(s) cause problems, and send back to user */
 		/*	if ( !invite_anyone_send_invitation( $bp->loggedin_user->id, $email, $message, $groups ) )
@@ -1258,13 +1405,37 @@ function invite_anyone_process_invitations( $data ) {
 
 	// If there are errors, redirect to the Invite New Members page
 	if ( ! empty( $returned_data['error_emails'] ) ) {
-		setcookie( 'invite-anyone', serialize( $returned_data ), 0, '/' );
+		setcookie( 'invite-anyone', wp_json_encode( $returned_data ), 0, '/' );
 		$redirect = bp_loggedin_user_domain() . $bp->invite_anyone->slug . '/invite-new-members/';
 		bp_core_redirect( $redirect );
 		die();
 	}
 
 	return true;
+}
+
+/**
+ * Replaces the customized salutation in outgoing invitation emails.
+ *
+ * There's no first name, so we just say 'Hello' instead.
+ *
+ * @since 1.4.0
+ *
+ * @param string $salutation
+ * @param array  $settings
+ * @return string
+ */
+function invite_anyone_replace_bp_email_salutation( $salutation, $settings ) {
+	/**
+	 * Filters the IA email salutation.
+	 *
+	 * @since 1.4.0
+	 *
+	 * @param string $ia_salutation Salutation from IA.
+	 * @param string $salutation    Salutation from BP.
+	 * @param array  $settings      Email settings.
+	 */
+	return apply_filters( 'invite_anyone_replace_bp_email_salutation', _x( 'Hello,', 'Invite Anyone email salutation', 'invite-anyone' ), $salutation, $settings );
 }
 
 function invite_anyone_send_invitation( $inviter_id, $email, $message, $groups ) {
@@ -1366,7 +1537,7 @@ function invite_anyone_bypass_registration_lock() {
 
 		add_filter( 'bp_get_signup_allowed', '__return_true' );
 	} else {
-		add_filter( 'option_users_can_register', create_function( false, 'return true;' ) );
+		add_filter( 'option_users_can_register', '__return_true' );
 	}
 }
 add_action( 'wp', 'invite_anyone_bypass_registration_lock', 1 );
@@ -1472,3 +1643,160 @@ function invite_anyone_already_accepted_redirect( $redirect ) {
 }
 add_filter( 'bp_loggedin_register_page_redirect_to', 'invite_anyone_already_accepted_redirect' );
 
+/** BP emails ****************************************************************/
+
+/**
+ * Install Invite Anyone emails during email installation routine for BuddyPress.
+ *
+ * @since 1.4.0
+ *
+ * @param bool $post_exists_check Should we check to see if our email post types exist before installing?
+ *                                Default: false.
+ */
+function invite_anyone_install_emails( $post_exists_check = false ) {
+	// No need to check if our post types exist.
+	if ( ! $post_exists_check ) {
+		invite_anyone_set_email_type( 'invite-anyone-invitation', false );
+
+	// Only create email post types if they do not exist.
+	} else {
+		switch_to_blog( bp_get_root_blog_id() );
+
+		$mail_types = array( 'invite-anyone-invitation' );
+
+		// Try to fetch email posts with our taxonomy.
+		$emails = get_posts( array(
+			'fields'           => 'ids',
+			'post_status'      => 'publish',
+			'post_type'        => bp_get_email_post_type(),
+			'posts_per_page'   => 1,
+			'suppress_filters' => false,
+			'tax_query' => array(
+				'relation' => 'OR',
+				array(
+					'taxonomy' => bp_get_email_tax_type(),
+					'field'    => 'slug',
+					'terms'    => $mail_types,
+				),
+			),
+		) );
+
+		// See if our taxonomies are attached to our email posts.
+		$found = array();
+		foreach ( $emails as $post_id ) {
+			$tax   = wp_get_object_terms( $post_id, bp_get_email_tax_type(), array( 'fields' => 'slugs' ) );
+			$found = array_merge( $found, (array) $tax );
+		}
+
+		restore_current_blog();
+
+		// Find out if we need to create any posts.
+		$to_create = array_diff( $mail_types, $found );
+		if ( empty( $to_create ) ) {
+			return;
+		}
+
+		// Create posts with our email types.
+		foreach ( $to_create as $email_type ) {
+			invite_anyone_set_email_type( $email_type, false );
+		}
+	}
+}
+add_action( 'bp_core_install_emails', 'ass_install_emails' );
+
+/**
+ * Sets the email situation type for use in Invite Anyone.
+ *
+ * Only applicable for BuddyPress 2.5+.
+ *
+ * @since 1.4.0
+ *
+ * @param string $email_type The email type to fetch.
+ * @param bool   $term_check Check if our email term exists before creating our specific email
+ *                           situation. Default: true.
+ */
+function invite_anyone_set_email_type( $email_type, $term_check = true ) {
+	$switched = false;
+
+	if ( false === bp_is_root_blog() ) {
+		$switched = true;
+		switch_to_blog( bp_get_root_blog_id() );
+	}
+
+	if ( true === $term_check ) {
+		$term = term_exists( $email_type, bp_get_email_tax_type() );
+	} else {
+		$term = 0;
+	}
+
+	// Term already exists so don't do anything.
+	if ( true === $term_check && $term !== 0 && $term !== null ) {
+		if ( true === $switched ) {
+			restore_current_blog();
+		}
+
+		return;
+
+	// Create our email situation.
+	} else {
+		// Set up default email content depending on the email type.
+		switch ( $email_type ) {
+			// Site invitations.
+			case 'invite-anyone-invitation' :
+				/* translators: do not remove {} brackets or translate its contents. */
+				$post_title = __( '[{{{site.name}}}] {{{ia.subject}}}', 'invite-anyone' );
+
+				/* translators: do not remove {} brackets or translate its contents. */
+				$html_content = __( "{{{ia.content}}}<br /><hr><a href=\"{{{ia.accept_url}}}\">Accept or reject this invitation</a> &middot; <a href=\"{{{ia.opt_out_url}}}\">Opt out of future invitations</a>", 'invite-anyone' );
+
+				/* translators: do not remove {} brackets or translate its contents. */
+				$plaintext_content = __( "{{{ia.content_plaintext}}}", 'invite-anyone' );
+
+				$situation_desc = __( 'A user is invited to join the site by email. Used by the Invite Anyone plugin.', 'invite-anyone' );
+
+				break;
+		}
+
+		// Sanity check!
+		if ( false === isset( $post_title ) ) {
+			if ( true === $switched ) {
+				restore_current_blog();
+			}
+
+			return;
+		}
+
+		$id = $email_type;
+
+		$defaults = array(
+			'post_status' => 'publish',
+			'post_type'   => bp_get_email_post_type(),
+		);
+
+		$email = array(
+			'post_title'   => $post_title,
+			'post_content' => $html_content,
+			'post_excerpt' => $plaintext_content,
+		);
+
+		// Email post content.
+		$post_id = wp_insert_post( bp_parse_args( $email, $defaults, 'install_email_' . $id ) );
+
+		// Save the situation.
+		if ( ! is_wp_error( $post_id ) ) {
+			$tt_ids = wp_set_object_terms( $post_id, $id, bp_get_email_tax_type() );
+
+			// Situation description.
+			if ( ! is_wp_error( $tt_ids ) ) {
+				$term = get_term_by( 'term_taxonomy_id', (int) $tt_ids[0], bp_get_email_tax_type() );
+				wp_update_term( (int) $term->term_id, bp_get_email_tax_type(), array(
+					'description' => $situation_desc,
+				) );
+			}
+		}
+	}
+
+	if ( true === $switched ) {
+		restore_current_blog();
+	}
+}
